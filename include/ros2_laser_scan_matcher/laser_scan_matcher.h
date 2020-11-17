@@ -38,53 +38,39 @@
 #ifndef LASER_SCAN_MATCHER_LASER_SCAN_MATCHER_H
 #define LASER_SCAN_MATCHER_LASER_SCAN_MATCHER_H
 
-#include <message_filters/subscriber.h>
-#include <nav_msgs/GetMap.h>
-#include <nav_msgs/OccupancyGrid.h>
-#include <ros/ros.h>
-#include <sensor_msgs/LaserScan.h>
-#include <tf/message_filter.h>
-#include <tf/transform_broadcaster.h>
-#include <tf/transform_datatypes.h>
-#include <tf/transform_listener.h>
+#include <sensor_msgs/msg/laser_scan.hpp>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_ros/transform_listener.h>
 
+#include "rclcpp/rclcpp.hpp"
 #include <csm/csm_all.h>  // csm defines min and max, but Eigen complains
 #include <boost/thread.hpp>
 #undef min
 #undef max
 
-#include "laser_scan_matcher/Math.h"
-#include "laser_scan_matcher/karto_tools.h"
+#include "ros2_laser_scan_matcher/Math.h"
 
 #define MAP_IDX(sx, i, j) (sx * j + i)
 
 namespace scan_tools
 {
-class LaserScanMatcher
+class LaserScanMatcher: public rclcpp::Node
 {
 public:
-  LaserScanMatcher();
+  LaserScanMatcher(): Node("reuse_timer");
   ~LaserScanMatcher();
 
-  void scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan);
-  bool mapCallback(nav_msgs::GetMap::Request& req, nav_msgs::GetMap::Response& res);
+  void scanCallback(const sensor_msgs::msg::LaserScan::ConstPtr& scan);
 
 private:
   // Ros handle
 
-  message_filters::Subscriber<sensor_msgs::LaserScan>* scan_filter_sub_;
+  rclcpp::Subscription<sensor_msgs::LaserScan>::SharedPtr scan_filter_sub_;
   tf::MessageFilter<sensor_msgs::LaserScan>* scan_filter_;
 
   std::shared_ptr<tf2_ros::TransformListener> tf_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tfB_;
   tf2::Transform base_to_laser_;  // static, cached
-
-  // Publisher
-  ros::Publisher sst_;
-  rclcpp_lifecycle::LifecyclePublisher<nav_msgs::OccupancyGrid>::SharedPtr sst_;
-  rclcpp_lifecycle::LifecyclePublisher<nav_msgs::MapMetaData>::SharedPtr sstm_;
-  ros::ServiceServer ss_;
-  rclcpp::Service<nav_msgs::GetMap>::SharedPtr global_loc_srv_;
 
   // Coordinate parameters
   std::string map_frame_;
