@@ -8,12 +8,16 @@ find_package(rclcpp REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(rcutils REQUIRED)
 find_package(PkgConfig)
-pkg_check_modules(csm REQUIRED csm)
-include_directories(include ${catkin_INCLUDE_DIRS} ${csm_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS})
-link_directories(${csm_LIBRARY_DIRS})
+find_package(csm REQUIRED)
+find_package(Eigen3 REQUIRED)
+include_directories(
+  include
+  ${EIGEN3_INCLUDE_DIRS}
+  )
+
 
 add_executable(laser_scan_matcher src/laser_scan_matcher.cpp)
-ament_target_dependencies(laser_scan_matcher rclcpp rcutils sensor_msgs)
+
 target_include_directories(laser_scan_matcher
   PRIVATE
   "include"
@@ -22,6 +26,8 @@ target_include_directories(laser_scan_matcher
 ament_target_dependencies(laser_scan_matcher
   rclcpp
   sensor_msgs
+  rcutils
+  Eigen3
   tf2_ros
   csm
 )

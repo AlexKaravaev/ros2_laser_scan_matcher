@@ -36,11 +36,32 @@
  */
 
 #include "ros2_laser_scan_matcher/laser_scan_matcher.h"
+ 
+#undef min
+#undef max
 
 namespace scan_tools
 {
-LaserScanMatcher::LaserScanMatcher() : initialized_(false), got_map_(false)
+
+void LaserScanMatcher::add_parameter(
+    const std::string & name, const rclcpp::ParameterValue & default_value,
+    const std::string & description, const std::string & additional_constraints,
+    bool read_only)
+  {
+    auto descriptor = rcl_interfaces::msg::ParameterDescriptor();
+
+    descriptor.name = name;
+    descriptor.description = description;
+    descriptor.additional_constraints = additional_constraints;
+    descriptor.read_only = read_only;
+
+    declare_parameter(descriptor.name, default_value, descriptor);
+  }
+
+
+LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(false), got_map_(false)
 {
+  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(rclcpp::Clock(), tf2::durationFromSec(0.5),this);
   // Initiate parameters
   map_to_odom_.setIdentity();
 
@@ -182,12 +203,10 @@ LaserScanMatcher::LaserScanMatcher() : initialized_(false), got_map_(false)
 
 
   // Subscribers
-  scan_filter_sub_ = new message_filters::Subscriber<sensor_msgs::LaserScan>(nh_, "scan", 5);
-  scan_filter_ = new tf2::MessageFilter<sensor_msgs::LaserScan>(*scan_filter_sub_, tf_, odom_frame_, 5);
-  scan_filter_->registerCallback(boost::bind(&LaserScanMatcher::scanCallback, this, _1));
+  this->scan_filter_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>("scan", 5, std::bind(&LaserScanMatcher::scanCallback, this, std::placeholders::_1));
 
   timer_ = this->create_wall_timer(
-      transform_publish_period, std::bind(&LaserScanMatcher::publishLoop, this));
+      std::chrono::milliseconds(500), std::bind(&LaserScanMatcher::publishLoop, this));
 }
 
 LaserScanMatcher::~LaserScanMatcher()
@@ -197,33 +216,34 @@ LaserScanMatcher::~LaserScanMatcher()
     transform_thread_->join();
     delete transform_thread_;
   }
-  if (scan_filter_)
-    delete scan_filter_;
-  if (scan_filter_sub_)
-    delete scan_filter_sub_;
+
 }
 
 void LaserScanMatcher::publishTransform()
 {
   boost::mutex::scoped_lock(map_to_odom_mutex_);
-  rclcpp::Duration tf_expiration = now() + rclcpp::Duration(0.05,0.0);
-  tfB_->sendTransform(tf2::StampedTransform(map_to_odom_, now(), map_frame_, odom_frame_));
+  rclcpp::Time tf_expiration = now() + rclcpp::Duration(0.05,0.0);
+  geometry_msgs::msg::TransformStamped tf_msg;
+  tf2::convert(map_to_odom_, tf_msg);
+  tfB_->sendTransform(tf_msg);
 }
 
-void LaserScanMatcher::publishLoop(double transform_publish_period)
+void LaserScanMatcher::publishLoop()
 {
   publishTransform();
 
 }
 
-bool LaserScanMatcher::getOdomPose(tf::Transform& odom_to_base_tf, const ros::Time& t)
+bool LaserScanMatcher::getOdomPose(tf2::Transform& odom_to_base_tf, const rclcpp::Time& t)
 {
-  tf2::Stamped<tf2::Pose> ident(tf2::Transform(tf2::createQuaternionFromRPY(0, 0, 0), tf2::Vector3(0, 0, 0)), t,
-                              base_frame_);
-  tf2::Stamped<tf2::Transform> odom_pose;
+
+  geometry_msgs::msg::TransformStamped odom_pose;
+  
   try
   {
-    tf_.transformPose(odom_frame_, ident, odom_pose);
+
+    odom_pose = tf_buffer_->lookupTransform(odom_frame_, base_frame_, t, rclcpp::Duration(1.0) );
+    
   }
   catch (tf2::TransformException e)
   {
@@ -231,12 +251,13 @@ bool LaserScanMatcher::getOdomPose(tf::Transform& odom_to_base_tf, const ros::Ti
     return false;
   }
 
-  odom_to_base_tf = odom_pose;
+  odom_to_base_tf.setOrigin(tf2::Vector3(odom_pose.transform.translation.x,odom_pose.transform.translation.y,odom_pose.transform.translation.z));
+  odom_to_base_tf.setRotation(tf2::Quaternion(odom_pose.transform.rotation.x,odom_pose.transform.rotation.y,odom_pose.transform.rotation.z,odom_pose.transform.rotation.w));
 
   return true;
 }
 
-LocalizedRangeScan* LaserScanMatcher::addScan(LaserRangeFinder* laser, const sensor_msgs::LaserScan::ConstPtr& scan,
+LocalizedRangeScan* LaserScanMatcher::addScan(LaserRangeFinder* laser, const sensor_msgs::msg::LaserScan::SharedPtr& scan,
                                               const tf2::Transform& odom_to_base_tf)
 {
   // Create a vector of doubles for karto
@@ -262,14 +283,14 @@ LocalizedRangeScan* LaserScanMatcher::addScan(LaserRangeFinder* laser, const sen
   range_scan->SetOdometricPose(Pose2(odom_to_base_tf.getOrigin().x(), odom_to_base_tf.getOrigin().y(),
                                      tf2::getYaw(odom_to_base_tf.getRotation())));
 
-  tf::Transform map_to_base_tf = map_to_odom_ * odom_to_base_tf;
+  tf2::Transform map_to_base_tf = map_to_odom_ * odom_to_base_tf;
   range_scan->SetCorrectedPose(
       Pose2(map_to_base_tf.getOrigin().x(), map_to_base_tf.getOrigin().y(), tf2::getYaw(map_to_base_tf.getRotation())));
 
   return range_scan;
 }
 
-void LaserScanMatcher::scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
+void LaserScanMatcher::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan)
 {
 
   // Check whether we know about this laser yet
@@ -290,7 +311,7 @@ void LaserScanMatcher::scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan
   }
 }
 
-bool LaserScanMatcher::processScan(LaserRangeFinder* laser, const sensor_msgs::LaserScan::ConstPtr& scan)
+bool LaserScanMatcher::processScan(LaserRangeFinder* laser, const sensor_msgs::msg::LaserScan::SharedPtr& scan)
 {
   if (!getOdomPose(odom_to_base_tf, scan->header.stamp))
     return false;
@@ -341,7 +362,7 @@ bool LaserScanMatcher::processScan(LaserRangeFinder* laser, const sensor_msgs::L
   // estimated change since last scan
   // the predicted change of the laser's position, in the laser frame
 
-  tf::Transform pr_ch_l;
+  tf2::Transform pr_ch_l;
   pr_ch_l = (f2b_kf_ * base_to_laser_).inverse() * map_to_odom_ * odom_to_base_tf * base_to_laser_;
 
   input_.first_guess[0] = pr_ch_l.getOrigin().getX();
@@ -368,7 +389,7 @@ bool LaserScanMatcher::processScan(LaserRangeFinder* laser, const sensor_msgs::L
   // Scan matching - using point to line icp from CSM
 
   sm_icp(&input_, &output_);
-  tf::Transform corr_ch;
+  tf2::Transform corr_ch;
 
   if (output_.valid)
   {
@@ -429,7 +450,7 @@ bool LaserScanMatcher::newKeyframeNeeded(const tf2::Transform& d)
   return false;
 }
 
-void LaserScanMatcher::laserScanToLDP(const sensor_msgs::LaserScan::ConstPtr& scan, LDP& ldp)
+void LaserScanMatcher::laserScanToLDP(const sensor_msgs::msg::LaserScan::SharedPtr& scan, LDP& ldp)
 {
   unsigned int n = scan->ranges.size();
   ldp = ld_alloc_new(n);
@@ -465,7 +486,7 @@ void LaserScanMatcher::laserScanToLDP(const sensor_msgs::LaserScan::ConstPtr& sc
   ldp->true_pose[2] = 0.0;
 }
 
-LaserRangeFinder* LaserScanMatcher::getLaser(const sensor_msgs::LaserScan::ConstPtr& scan)
+LaserRangeFinder* LaserScanMatcher::getLaser(const sensor_msgs::msg::LaserScan::SharedPtr& scan)
 {
   // Check whether we know about this laser yet
   if (lasers_.find(scan->header.frame_id) == lasers_.end())
@@ -473,14 +494,17 @@ LaserRangeFinder* LaserScanMatcher::getLaser(const sensor_msgs::LaserScan::Const
     // New laser; need to create a Karto device for it.
 
     // Get the laser's pose, relative to base.
-    tf2::Stamped<tf2::Pose> ident;
+
     tf2::Stamped<tf2::Transform> laser_pose;
-    ident.setIdentity();
-    ident.frame_id_ = scan->header.frame_id;
-    ident.stamp_ = scan->header.stamp;
+    geometry_msgs::msg::TransformStamped laser_pose_msg;
     try
     {
-      tf_.transformPose(base_frame_, ident, laser_pose);
+
+      laser_pose_msg = tf_buffer_->lookupTransform(base_frame_, scan->header.frame_id, rclcpp::Time(0), rclcpp::Duration(1.0) );
+      // laser_pose.setOrigin(tf2::Vector3(laser_pose_msg.transform.translation.x, laser_pose_msg.transform.translation.y,laser_pose_msg.transform.translation.z));
+      // laser_pose.setRotation(tf2::Quaternion(laser_pose_msg.transform.rotation.x, laser_pose_msg.transform.rotation.y,laser_pose_msg.transform.rotation.z,laser_pose_msg.transform.rotation.w));
+      tf2::fromMsg(laser_pose, laser_pose_msg);
+
     }
     catch (tf2::TransformException e)
     {
@@ -500,13 +524,14 @@ LaserRangeFinder* LaserScanMatcher::getLaser(const sensor_msgs::LaserScan::Const
     // frame
     // if the point's z-value is <=0, it is upside-down
 
-    tf::Vector3 v;
+    tf2::Vector3 v;
     v.setValue(0, 0, 1 + laser_pose.getOrigin().z());
-    tf::Stamped<tf2::Vector3> up(v, scan->header.stamp, base_frame_);
+    tf2::Stamped<tf2::Vector3> up(v, std::chrono::time_point(scan->header.stamp), base_frame_);
 
     try
     {
-      tf_.transformPoint(scan->header.frame_id, up, up);
+      auto base_to_laser = tf_buffer_->lookupTransform(base_frame_,scan->header.frame_id, now(), rclcpp::Duration(0));
+      tf2::doTransform(up, up, base_to_laser);
       RCLCPP_DEBUG(get_logger(),"Z-Axis in sensor frame: %.3f", up.z());
     }
     catch (tf2::TransformException& e)
