@@ -90,8 +90,8 @@ private:
   double kf_dist_linear_sq_;
   double kf_dist_angular_;
 
-  boost::mutex map_mutex_;
-  boost::mutex map_to_odom_mutex_;
+  std::mutex map_mutex_;
+  std::mutex map_to_odom_mutex_;
 
   bool initialized_;
   bool got_map_;
@@ -110,7 +110,6 @@ private:
   double resolution_;
 
   tf2::Transform map_to_odom_;
-  boost::thread* transform_thread_;
 
   std::map<std::string, LaserRangeFinder*> lasers_;
   std::map<std::string, bool> lasers_inverted_;

@@ -6,10 +6,15 @@ find_package(ament_cmake REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(rcutils REQUIRED)
 find_package(PkgConfig)
 find_package(csm REQUIRED)
 find_package(Eigen3 REQUIRED)
+
+find_package(Boost COMPONENTS thread REQUIRED)
+
 include_directories(
   include
   ${EIGEN3_INCLUDE_DIRS}
@@ -29,10 +34,13 @@ ament_target_dependencies(laser_scan_matcher
   rcutils
   Eigen3
   tf2_ros
+  tf2
+  tf2_geometry_msgs
   csm
+  Boost
 )
 
-install(TARGETS laser_scan_matcher DESTINATION lib/{PROJECT_NAME})
+install(TARGETS laser_scan_matcher DESTINATION lib/${PROJECT_NAME})
 
 
 ament_package()
