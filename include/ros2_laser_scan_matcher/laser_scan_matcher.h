@@ -50,12 +50,6 @@
 #include <csm/csm.h>  // csm defines min and max, but Eigen complains
 #include <boost/thread.hpp>
 
-#include "ros2_laser_scan_matcher/karto_tools.h"
-#include "ros2_laser_scan_matcher/Math.h"
-#undef min
-#undef max
-
-#define MAP_IDX(sx, i, j) (sx * j + i)
 
 namespace scan_tools
 {
@@ -71,9 +65,6 @@ private:
   // Ros handle
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_filter_sub_;
-  std::shared_ptr<tf2_ros::MessageFilter<sensor_msgs::msg::LaserScan> > scan_filter_;
-
-  rclcpp::TimerBase::SharedPtr timer_;
 
   std::shared_ptr<tf2_ros::TransformListener> tf_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tfB_;
@@ -91,12 +82,8 @@ private:
   double kf_dist_linear_sq_;
   double kf_dist_angular_;
 
-  std::mutex map_mutex_;
-  std::mutex map_to_odom_mutex_;
-
   bool initialized_;
-  bool got_map_;
-
+  
   tf2::Transform f2b_;     // fixed-to-base tf (pose of base frame in fixed frame)
   tf2::Transform f2b_kf_;  // pose of the last keyframe scan in fixed frame
 
@@ -110,19 +97,12 @@ private:
   // Grid map parameters
   double resolution_;
 
-  tf2::Transform map_to_odom_;
-
-  std::map<std::string, LaserRangeFinder*> lasers_;
-  std::map<std::string, bool> lasers_inverted_;
-
   std::vector<double> a_cos_;
   std::vector<double> a_sin_;
 
 
   rclcpp::Time last_icp_time_;
-  LocalizedRangeScanVector allScans_;
 
-  // Methods
   bool getBaseToLaserTf (const std::string& frame_id);
 
   bool processScan(LDP& curr_ldp_scan, const rclcpp::Time& time);
@@ -131,18 +111,12 @@ private:
 
   bool newKeyframeNeeded(const tf2::Transform& d);
 
-  void publishTransform();
-  void publishLoop();
   void add_parameter(
     const std::string & name, const rclcpp::ParameterValue & default_value,
     const std::string & description = "", const std::string & additional_constraints = "",
     bool read_only = false);
-  bool getOdomPose(tf2::Transform& odom_to_base_tf, const rclcpp::Time& t);
-     void createCache (const sensor_msgs::msg::LaserScan::SharedPtr& scan_msg);
-  LaserRangeFinder* getLaser(const sensor_msgs::msg::LaserScan::SharedPtr& scan);
-  LocalizedRangeScan* addScan(LaserRangeFinder* laser, const sensor_msgs::msg::LaserScan::SharedPtr& scan,
-                              const tf2::Transform& odom_to_base_tf);
-  bool updateMap();
+  void createCache (const sensor_msgs::msg::LaserScan::SharedPtr& scan_msg);
+
 
 };  // LaserScanMatcher
 
