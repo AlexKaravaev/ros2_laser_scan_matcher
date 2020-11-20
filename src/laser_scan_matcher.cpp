@@ -310,25 +310,7 @@ void LaserScanMatcher::createCache (const sensor_msgs::msg::LaserScan::SharedPtr
 
 
 void LaserScanMatcher::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan_msg)
-// {
 
-//   // Check whether we know about this laser yet
-//   LaserRangeFinder* laser = getLaser(scan);
-
-//   if (!laser)
-//   {
-//     RCLCPP_WARN(get_logger(),"Failed to create laser device for %s; discarding scan", scan->header.frame_id.c_str());
-//     return;
-//   }
-
-//   if (processScan(laser, scan))
-//   {
-//     map_to_odom_mutex_.lock();
-//     map_to_odom_ = f2b_kf_ * odom_to_base_tf.inverse();
-//     map_to_odom_mutex_.unlock();
-
-//   }
-// }
 {
 
   if (!initialized_)
@@ -360,15 +342,30 @@ bool LaserScanMatcher::getBaseToLaserTf (const std::string& frame_id)
   geometry_msgs::msg::TransformStamped laser_pose_msg;
   try
   {
-      laser_pose_msg = tf_buffer_->lookupTransform(base_frame_, frame_id, rclcpp::Time(0),rclcpp::Duration(10));
+      laser_pose_msg = tf_buffer_->lookupTransform(base_frame_, frame_id, t,rclcpp::Duration(10));
+      // laser_pose_msg.transform.translation.x = 0.15;
+      // laser_pose_msg.transform.translation.y = 0.15;
+      // laser_pose_msg.transform.translation.z = 0.15;
+      base_to_laser_tf.setOrigin(tf2::Vector3(laser_pose_msg.transform.translation.x,\
+                                              laser_pose_msg.transform.translation.y,\
+                                              laser_pose_msg.transform.translation.z));
+      tf2::Quaternion q(laser_pose_msg.transform.rotation.x,\
+                        laser_pose_msg.transform.rotation.y,\
+                        laser_pose_msg.transform.rotation.z,\
+                        laser_pose_msg.transform.rotation.w);
+      base_to_laser_tf.setRotation(q);
       
-      tf2::convert(base_to_laser_tf, laser_pose_msg);
+            RCLCPP_INFO(get_logger(), std::string("laser ") + std::to_string(base_to_laser_tf.getOrigin().x() ) \
+              + std::string(" ")+std::to_string(base_to_laser_tf.getOrigin().y()) \
+              + std::string(" ")+std::to_string(base_to_laser_tf.getOrigin().z()));
+ 
   }
   catch (tf2::TransformException ex)
   {
     RCLCPP_INFO(get_logger(),"Could not get initial transform from base to laser frame, %s", ex.what());
     return false;
   }
+
   base_to_laser_ = base_to_laser_tf;
   laser_to_base_ = base_to_laser_.inverse();
 
@@ -463,9 +460,12 @@ bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
 
     // update the pose in the world frame
     f2b_ = f2b_kf_ * corr_ch;
-    RCLCPP_INFO(get_logger(), std::to_string(double(corr_ch_l.getOrigin().getX())));
-    RCLCPP_INFO(get_logger(), std::to_string(double(corr_ch_l.getOrigin().getY())));
-    RCLCPP_INFO(get_logger(), std::to_string(double(tf2::getYaw(corr_ch_l.getRotation()))));
+    // RCLCPP_INFO(get_logger(), std::to_string(double(f2b_.getOrigin().getX())));
+    // RCLCPP_INFO(get_logger(), std::to_string(double(f2b_.getOrigin().getY())));
+    // RCLCPP_INFO(get_logger(), std::to_string(double(tf2::getYaw(f2b_.getRotation()))));
+    // RCLCPP_INFO(get_logger(), std::string("if ") + std::to_string(double(corr_ch_l.getOrigin().getX())) \
+    //           + std::string(" ")+std::to_string(double(corr_ch_l.getOrigin().getX())) \
+    //           + std::string(" ")+std::to_string(double(tf2::getYaw(corr_ch_l.getRotation()))));
 
   }
 
@@ -474,7 +474,9 @@ bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
     corr_ch.setIdentity();
     RCLCPP_WARN(get_logger(),"Error in scan matching");
   }
-
+    // RCLCPP_INFO(get_logger(), std::string("not if ") + std::to_string(double(corr_ch.getOrigin().getX())) \
+    //           + std::string(" ")+std::to_string(double(corr_ch.getOrigin().getX())) \
+    //           + std::string(" ")+std::to_string(double(tf2::getYaw(corr_ch.getRotation()))));
   geometry_msgs::msg::TransformStamped tf_msg;
   tf_msg.transform.translation.x = f2b_.getOrigin().x();
   tf_msg.transform.translation.y = f2b_.getOrigin().y();
@@ -496,6 +498,7 @@ bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
     ld_free(prev_ldp_scan_);
     prev_ldp_scan_ = curr_ldp_scan;
     f2b_kf_ = f2b_;
+    RCLCPP_INFO(get_logger(), "new keyframe");
 
   }
   else
@@ -516,6 +519,7 @@ bool LaserScanMatcher::newKeyframeNeeded(const tf2::Transform& d)
   double y = d.getOrigin().getY();
   if (x * x + y * y > kf_dist_linear_sq_)
     return true;
+  // RCLCPP_INFO(get_logger(), std::to_string(x * x + y * y) + std::string(" and kf ")+std::to_string(kf_dist_linear_sq_));
 
   return false;
 }
