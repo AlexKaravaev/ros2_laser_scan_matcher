@@ -65,7 +65,7 @@ public:
   LaserScanMatcher();
   ~LaserScanMatcher();
 
-  void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan);
+  void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan_msg);
 
 private:
   // Ros handle
@@ -78,6 +78,7 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tfB_;
   tf2::Transform base_to_laser_;  // static, cached
+  tf2::Transform laser_to_base_; 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   
   // Coordinate parameters
@@ -113,12 +114,18 @@ private:
 
   std::map<std::string, LaserRangeFinder*> lasers_;
   std::map<std::string, bool> lasers_inverted_;
-  bool inverted_laser_;
 
+  std::vector<double> a_cos_;
+  std::vector<double> a_sin_;
+
+
+  rclcpp::Time last_icp_time_;
   LocalizedRangeScanVector allScans_;
 
   // Methods
-  bool processScan(LaserRangeFinder* laser, const sensor_msgs::msg::LaserScan::SharedPtr& scan);
+  bool getBaseToLaserTf (const std::string& frame_id);
+
+  bool processScan(LDP& curr_ldp_scan, const rclcpp::Time& time);
   void laserScanToLDP(const sensor_msgs::msg::LaserScan::SharedPtr& scan, LDP& ldp);
   void createTfFromXYTheta(double x, double y, double theta, tf2::Transform& t);
 
@@ -131,6 +138,7 @@ private:
     const std::string & description = "", const std::string & additional_constraints = "",
     bool read_only = false);
   bool getOdomPose(tf2::Transform& odom_to_base_tf, const rclcpp::Time& t);
+     void createCache (const sensor_msgs::msg::LaserScan::SharedPtr& scan_msg);
   LaserRangeFinder* getLaser(const sensor_msgs::msg::LaserScan::SharedPtr& scan);
   LocalizedRangeScan* addScan(LaserRangeFinder* laser, const sensor_msgs::msg::LaserScan::SharedPtr& scan,
                               const tf2::Transform& odom_to_base_tf);

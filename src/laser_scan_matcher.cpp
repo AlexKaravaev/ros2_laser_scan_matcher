@@ -59,7 +59,7 @@ void LaserScanMatcher::add_parameter(
   }
 
 
-LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(false), got_map_(false)
+LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(false)
 {
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
   // Initiate parameters
@@ -75,17 +75,9 @@ LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(
     "Which frame to use for the map");
   add_parameter("kf_dist_linear", rclcpp::ParameterValue(0.10),
     "When to generate keyframe scan.");
-  add_parameter("kf_dist_angular", rclcpp::ParameterValue(0.10* (M_PI/180.0)),
+  add_parameter("kf_dist_angular", rclcpp::ParameterValue(10.0* (M_PI/180.0)),
     "When to generate keyframe scan.");
   
-  kf_dist_linear_sq_ = kf_dist_linear_ * kf_dist_linear_;
-  double transform_publish_period;
-  double tmp;
-  
-  add_parameter("resolution", rclcpp::ParameterValue(0.025),
-    "Resolution of the laser.");
-  add_parameter("transform_publish_period", rclcpp::ParameterValue(0.05),
-    "");
 
 
   // CSM parameters - comments copied from algos.h (by Andrea Censi)
@@ -110,7 +102,7 @@ LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(
   add_parameter("sigma", rclcpp::ParameterValue(0.010),
     "Noise in the scan (m).");
 
-  add_parameter("use_corr_tricks", rclcpp::ParameterValue(1.0),
+  add_parameter("use_corr_tricks", rclcpp::ParameterValue(1),
     "Use smart tricks for finding correspondences.");
 
   add_parameter("restart", rclcpp::ParameterValue(0),
@@ -122,7 +114,7 @@ LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(
   add_parameter("restart_dt", rclcpp::ParameterValue(1.0),
    "Displacement for restarting. (m).");
 
-  add_parameter("restart_dtheta", rclcpp::ParameterValue(1.0),
+  add_parameter("restart_dtheta", rclcpp::ParameterValue(0.1),
     "Displacement for restarting. (rad).");
 
   add_parameter("clustering_threshold", rclcpp::ParameterValue(0.25),
@@ -187,7 +179,44 @@ LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(
     " If 1, the field 'readings_sigma' in the second scan is used to weight the correspondence by 1/sigma^2");
     
 
+  map_frame_  = this->get_parameter("map_frame").as_string();
+  base_frame_ = this->get_parameter("base_frame").as_string();
+  odom_frame_ = this->get_parameter("odom_frame").as_string();
+  kf_dist_linear_  = this->get_parameter("kf_dist_linear").as_double();
+  kf_dist_angular_ = this->get_parameter("kf_dist_angular").as_double();
 
+  kf_dist_linear_sq_ = kf_dist_linear_ * kf_dist_linear_;
+
+  input_.max_angular_correction_deg = this->get_parameter("max_angular_correction_deg").as_double();
+  input_.max_linear_correction = this->get_parameter("max_linear_correction").as_double();
+  input_.max_iterations = this->get_parameter("max_iterations").as_int();
+  input_.epsilon_xy = this->get_parameter("epsilon_xy").as_double();
+  input_.epsilon_theta = this->get_parameter("epsilon_theta").as_double();
+  input_.max_correspondence_dist = this->get_parameter("max_correspondence_dist").as_double();
+  input_.sigma = this->get_parameter("sigma").as_double();
+  input_.use_corr_tricks = this->get_parameter("use_corr_tricks").as_int();
+  input_.restart = this->get_parameter("restart").as_int();
+  input_.restart_threshold_mean_error = this->get_parameter("restart_threshold_mean_error").as_double();
+  input_.restart_dt = this->get_parameter("restart_dt").as_double();
+  input_.restart_dtheta = this->get_parameter("restart_dtheta").as_double();
+  input_.clustering_threshold = this->get_parameter("clustering_threshold").as_double();
+  input_.orientation_neighbourhood = this->get_parameter("orientation_neighbourhood").as_int();
+  input_.use_point_to_line_distance = this->get_parameter("use_point_to_line_distance").as_int();
+  input_.do_alpha_test = this->get_parameter("do_alpha_test").as_int();
+  input_.do_alpha_test_thresholdDeg = this->get_parameter("do_alpha_test_thresholdDeg").as_double();
+  input_.outliers_maxPerc = this->get_parameter("outliers_maxPerc").as_double();
+  input_.outliers_adaptive_order = this->get_parameter("outliers_adaptive_order").as_double();
+  input_.outliers_adaptive_mult = this->get_parameter("outliers_adaptive_mult").as_double();
+  input_.do_visibility_test = this->get_parameter("do_visibility_test").as_int();
+  input_.outliers_remove_doubles = this->get_parameter("outliers_remove_doubles").as_int();
+  input_.do_compute_covariance = this->get_parameter("do_compute_covariance").as_int();
+  input_.debug_verify_tricks = this->get_parameter("debug_verify_tricks").as_int();
+  input_.use_ml_weights = this->get_parameter("use_ml_weights").as_int();
+  input_.use_sigma_weights = this->get_parameter("use_sigma_weights").as_int();
+
+  double transform_publish_period;
+  double tmp;
+  
   // State variables
 
   f2b_.setIdentity();
@@ -204,9 +233,9 @@ LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(
 
   // Subscribers
   this->scan_filter_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>("scan", 5, std::bind(&LaserScanMatcher::scanCallback, this, std::placeholders::_1));
+  tf_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   tfB_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
-  timer_ = this->create_wall_timer(
-      std::chrono::milliseconds(500), std::bind(&LaserScanMatcher::publishLoop, this));
+
 }
 
 LaserScanMatcher::~LaserScanMatcher()
@@ -214,38 +243,39 @@ LaserScanMatcher::~LaserScanMatcher()
 
 }
 
-void LaserScanMatcher::publishTransform()
-{
-  std::unique_lock<std::mutex>(map_to_odom_mutex_);
-  rclcpp::Time tf_expiration = now() + rclcpp::Duration(0.05,0.0);
-  geometry_msgs::msg::TransformStamped tf_msg;
-  tf_msg.transform.translation.x = map_to_odom_.getOrigin().x();
-  tf_msg.transform.translation.y = map_to_odom_.getOrigin().y();
-  tf_msg.transform.translation.z = map_to_odom_.getOrigin().z();
-  tf_msg.transform.rotation.x = map_to_odom_.getRotation().x();
-  tf_msg.transform.rotation.y = map_to_odom_.getRotation().y();
-  tf_msg.transform.rotation.z = map_to_odom_.getRotation().z();
-  tf_msg.transform.rotation.w = map_to_odom_.getRotation().w();
-  tf_msg.header.stamp = now();
-  RCLCPP_INFO(get_logger(), std::to_string(static_cast<double>(map_to_odom_.getRotation().w())));
-  tfB_->sendTransform(tf_msg);
-}
 
-void LaserScanMatcher::publishLoop()
-{
-  publishTransform();
 
-}
 
 bool LaserScanMatcher::getOdomPose(tf2::Transform& odom_to_base_tf, const rclcpp::Time& t)
 {
 
+  // tf2::Transform odom_pose;
+  // geometry_msgs::msg::TransformStamped ident;
+
+  // ident.transform.translation.x = 0;
+  // ident.transform.translation.y = 0;
+  // ident.transform.translation.z = 0;
+  // ident.transform.rotation.x = 0;
+  // ident.transform.rotation.y = 0;
+  // ident.transform.rotation.z = 0;
+  // ident.transform.rotation.w = 0;
+  // ident.header.stamp = t;
+  // ident.header.frame_id = base_frame_;
+  // ident.child_frame_id = odom_frame_;
+  
+  // try
+  // {
+
+  //   //odom_pose = tf_buffer_->lookupTransform(base_frame_, odom_frame_, rclcpp::Time(0));
+  //   tf2::doTransform(ident, odom_pose, odom_to_base_tf);
+  //   //tf_.transformPose(odom_frame_, ident, odom_pose);
+  // }
   geometry_msgs::msg::TransformStamped odom_pose;
   
   try
   {
 
-    odom_pose = tf_buffer_->lookupTransform(odom_frame_, base_frame_, t, rclcpp::Duration(1.0) );
+    odom_pose = tf_buffer_->lookupTransform(odom_frame_, base_frame_, rclcpp::Time(0),rclcpp::Duration(10) );
     
   }
   catch (tf2::TransformException e)
@@ -260,85 +290,95 @@ bool LaserScanMatcher::getOdomPose(tf2::Transform& odom_to_base_tf, const rclcpp
   return true;
 }
 
-LocalizedRangeScan* LaserScanMatcher::addScan(LaserRangeFinder* laser, const sensor_msgs::msg::LaserScan::SharedPtr& scan,
-                                              const tf2::Transform& odom_to_base_tf)
+
+
+void LaserScanMatcher::createCache (const sensor_msgs::msg::LaserScan::SharedPtr& scan_msg)
 {
-  // Create a vector of doubles for karto
-  std::vector<double> readings;
+  a_cos_.clear();
+  a_sin_.clear();
 
-  if (lasers_inverted_[scan->header.frame_id])
+  for (unsigned int i = 0; i < scan_msg->ranges.size(); ++i)
   {
-    for (std::vector<float>::const_reverse_iterator it = scan->ranges.rbegin(); it != scan->ranges.rend(); ++it)
-    {
-      readings.push_back(*it);
-    }
-  }
-  else
-  {
-    for (std::vector<float>::const_iterator it = scan->ranges.begin(); it != scan->ranges.end(); ++it)
-    {
-      readings.push_back(*it);
-    }
+    double angle = scan_msg->angle_min + i * scan_msg->angle_increment;
+    a_cos_.push_back(cos(angle));
+    a_sin_.push_back(sin(angle));
   }
 
-  // create localized range scan
-  LocalizedRangeScan* range_scan = new LocalizedRangeScan(laser, readings);
-  range_scan->SetOdometricPose(Pose2(odom_to_base_tf.getOrigin().x(), odom_to_base_tf.getOrigin().y(),
-                                     tf2::getYaw(odom_to_base_tf.getRotation())));
-
-  tf2::Transform map_to_base_tf = map_to_odom_ * odom_to_base_tf;
-  range_scan->SetCorrectedPose(
-      Pose2(map_to_base_tf.getOrigin().x(), map_to_base_tf.getOrigin().y(), tf2::getYaw(map_to_base_tf.getRotation())));
-
-  return range_scan;
+  input_.min_reading = scan_msg->range_min;
+  input_.max_reading = scan_msg->range_max;
 }
 
-void LaserScanMatcher::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan)
+
+void LaserScanMatcher::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan_msg)
+// {
+
+//   // Check whether we know about this laser yet
+//   LaserRangeFinder* laser = getLaser(scan);
+
+//   if (!laser)
+//   {
+//     RCLCPP_WARN(get_logger(),"Failed to create laser device for %s; discarding scan", scan->header.frame_id.c_str());
+//     return;
+//   }
+
+//   if (processScan(laser, scan))
+//   {
+//     map_to_odom_mutex_.lock();
+//     map_to_odom_ = f2b_kf_ * odom_to_base_tf.inverse();
+//     map_to_odom_mutex_.unlock();
+
+//   }
+// }
 {
 
-  // Check whether we know about this laser yet
-  LaserRangeFinder* laser = getLaser(scan);
-
-  if (!laser)
-  {
-    RCLCPP_WARN(get_logger(),"Failed to create laser device for %s; discarding scan", scan->header.frame_id.c_str());
-    return;
-  }
-
-  if (processScan(laser, scan))
-  {
-    map_to_odom_mutex_.lock();
-    map_to_odom_ = f2b_kf_ * odom_to_base_tf.inverse();
-    map_to_odom_mutex_.unlock();
-
-  }
-}
-
-bool LaserScanMatcher::processScan(LaserRangeFinder* laser, const sensor_msgs::msg::LaserScan::SharedPtr& scan)
-{
-  if (!getOdomPose(odom_to_base_tf, scan->header.stamp))
-    return false;
-
-  // If first scan, cache the tf from base to the scanner
   if (!initialized_)
   {
-    input_.min_reading = scan->range_min;
-    input_.max_reading = scan->range_max;
+    createCache(scan_msg);    // caches the sin and cos of all angles
 
-    laserScanToLDP(scan, prev_ldp_scan_);
+    // cache the static tf from base to laser
+    if (!getBaseToLaserTf("laser"))
+    {
+      RCLCPP_WARN(get_logger(),"Skipping scan");
+      return;
+    }
 
-    LocalizedRangeScan* pScan = addScan(laser, scan, odom_to_base_tf);
-    allScans_.push_back(pScan);
-
+    laserScanToLDP(scan_msg, prev_ldp_scan_);
+    last_icp_time_ = scan_msg->header.stamp;
     initialized_ = true;
-
-    return true;
   }
 
   LDP curr_ldp_scan;
-  laserScanToLDP(scan, curr_ldp_scan);
+  laserScanToLDP(scan_msg, curr_ldp_scan);
+  processScan(curr_ldp_scan, scan_msg->header.stamp);
+}
 
-  LocalizedRangeScan* pScan = addScan(laser, scan, odom_to_base_tf);
+bool LaserScanMatcher::getBaseToLaserTf (const std::string& frame_id)
+{
+  rclcpp::Time t = now();
+
+  tf2::Stamped<tf2::Transform> base_to_laser_tf;
+  geometry_msgs::msg::TransformStamped laser_pose_msg;
+  try
+  {
+      laser_pose_msg = tf_buffer_->lookupTransform(base_frame_, frame_id, rclcpp::Time(0),rclcpp::Duration(10));
+      
+      tf2::convert(base_to_laser_tf, laser_pose_msg);
+  }
+  catch (tf2::TransformException ex)
+  {
+    RCLCPP_INFO(get_logger(),"Could not get initial transform from base to laser frame, %s", ex.what());
+    return false;
+  }
+  base_to_laser_ = base_to_laser_tf;
+  laser_to_base_ = base_to_laser_.inverse();
+
+  return true;
+}
+
+
+bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
+{
+
 
   // CSM is used in the following way:
   // The scans are always in the laser frame
@@ -366,11 +406,29 @@ bool LaserScanMatcher::processScan(LaserRangeFinder* laser, const sensor_msgs::m
   // the predicted change of the laser's position, in the laser frame
 
   tf2::Transform pr_ch_l;
-  pr_ch_l = (f2b_kf_ * base_to_laser_).inverse() * map_to_odom_ * odom_to_base_tf * base_to_laser_;
+  // pr_ch_l = (f2b_kf_ * base_to_laser_).inverse() * map_to_odom_ * odom_to_base_tf * base_to_laser_;
 
+  double dt = (now() - last_icp_time_).nanoseconds()/1e-9;
+  double pr_ch_x, pr_ch_y, pr_ch_a;
+  
+
+  // the predicted change of the laser's position, in the fixed frame
+
+  tf2::Transform pr_ch;
+  createTfFromXYTheta(0.0,0.0,0.0, pr_ch);
+
+  // account for the change since the last kf, in the fixed frame
+
+  pr_ch = pr_ch * (f2b_ * f2b_kf_.inverse());
+
+  // the predicted change of the laser's position, in the laser frame
+
+
+  pr_ch_l = laser_to_base_ * f2b_.inverse() * pr_ch * f2b_ * base_to_laser_ ; 
   input_.first_guess[0] = pr_ch_l.getOrigin().getX();
   input_.first_guess[1] = pr_ch_l.getOrigin().getY();
   input_.first_guess[2] = tf2::getYaw(pr_ch_l.getRotation());
+
 
   // If they are non-Null, free covariance gsl matrices to avoid leaking memory
   if (output_.cov_x_m)
@@ -401,19 +459,37 @@ bool LaserScanMatcher::processScan(LaserRangeFinder* laser, const sensor_msgs::m
     createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2], corr_ch_l);
 
     // the correction of the base's position, in the base frame
-    corr_ch = base_to_laser_ * corr_ch_l * base_to_laser_.inverse();
+    corr_ch = base_to_laser_ * corr_ch_l * laser_to_base_;
 
     // update the pose in the world frame
     f2b_ = f2b_kf_ * corr_ch;
+    RCLCPP_INFO(get_logger(), std::to_string(double(corr_ch_l.getOrigin().getX())));
+    RCLCPP_INFO(get_logger(), std::to_string(double(corr_ch_l.getOrigin().getY())));
+    RCLCPP_INFO(get_logger(), std::to_string(double(tf2::getYaw(corr_ch_l.getRotation()))));
+
   }
+
   else
   {
     corr_ch.setIdentity();
     RCLCPP_WARN(get_logger(),"Error in scan matching");
   }
 
+  geometry_msgs::msg::TransformStamped tf_msg;
+  tf_msg.transform.translation.x = f2b_.getOrigin().x();
+  tf_msg.transform.translation.y = f2b_.getOrigin().y();
+  tf_msg.transform.translation.z = f2b_.getOrigin().z();
+  tf_msg.transform.rotation.x = f2b_.getRotation().x();
+  tf_msg.transform.rotation.y = f2b_.getRotation().y();
+  tf_msg.transform.rotation.z = f2b_.getRotation().z();
+  tf_msg.transform.rotation.w = f2b_.getRotation().w();
+ 
+  tf_msg.header.stamp = time;
+  tf_msg.header.frame_id = map_frame_;
+  tf_msg.child_frame_id = base_frame_;
+  //tf2::Stamped<tf2::Transform> transform_msg (f2b_, time, map_frame_, base_frame_);
+  tfB_->sendTransform (tf_msg);
   // **** swap old and new
-
   if (newKeyframeNeeded(corr_ch))
   {
     // generate a keyframe
@@ -421,23 +497,14 @@ bool LaserScanMatcher::processScan(LaserRangeFinder* laser, const sensor_msgs::m
     prev_ldp_scan_ = curr_ldp_scan;
     f2b_kf_ = f2b_;
 
-    Pose2 corrected_pose;
-    corrected_pose.SetX(f2b_kf_.getOrigin().x());
-    corrected_pose.SetY(f2b_kf_.getOrigin().y());
-    corrected_pose.SetHeading(tf2::getYaw(f2b_kf_.getRotation()));
-
-    pScan->SetCorrectedPose(corrected_pose);
-    allScans_.push_back(pScan);
-
-    return true;
   }
   else
   {
     ld_free(curr_ldp_scan);
-    delete pScan;
 
-    return false;
   }
+  last_icp_time_ = now();
+  
 }
 
 bool LaserScanMatcher::newKeyframeNeeded(const tf2::Transform& d)
@@ -489,62 +556,6 @@ void LaserScanMatcher::laserScanToLDP(const sensor_msgs::msg::LaserScan::SharedP
   ldp->true_pose[2] = 0.0;
 }
 
-LaserRangeFinder* LaserScanMatcher::getLaser(const sensor_msgs::msg::LaserScan::SharedPtr& scan)
-{
-  // Check whether we know about this laser yet
-  if (lasers_.find(scan->header.frame_id) == lasers_.end())
-  {
-    // New laser; need to create a Karto device for it.
-
-    // Get the laser's pose, relative to base.
-
-    tf2::Stamped<tf2::Transform> laser_pose;
-    geometry_msgs::msg::TransformStamped laser_pose_msg;
-    try
-    {
-
-      laser_pose_msg = tf_buffer_->lookupTransform(base_frame_, scan->header.frame_id, rclcpp::Time(0), rclcpp::Duration(1.0) );
-      
-      tf2::convert(laser_pose, laser_pose_msg);
-
-    }
-    catch (tf2::TransformException e)
-    {
-      RCLCPP_WARN(get_logger(),"Failed to compute laser pose, aborting initialization (%s)", e.what());
-      return NULL;
-    }
-
-    double yaw = tf2::getYaw(laser_pose.getRotation());
-
-    RCLCPP_INFO(get_logger(),"laser %s's pose wrt base: %.3f %.3f %.3f", scan->header.frame_id.c_str(), laser_pose.getOrigin().x(),
-             laser_pose.getOrigin().y(), yaw);
-
-    base_to_laser_ = laser_pose;
-
-    // To account for lasers that are mounted upside-down,
-    // we create a point 1m above the laser and transform it into the laser
-    // frame
-    // if the point's z-value is <=0, it is upside-down
-
-   
-
-    // Create a laser range finder device and copy in data from the first scan
-
-    LaserRangeFinder* laser = LaserRangeFinder::CreateLaserRangeFinder();
-    laser->SetRangeThreshold(12.0);  // for UTM-30LX
-    laser->SetOffsetPose(Pose2(laser_pose.getOrigin().x(), laser_pose.getOrigin().y(), yaw));
-    laser->SetMinimumRange(scan->range_min);
-    laser->SetMaximumRange(scan->range_max);
-    laser->SetMinimumAngle(scan->angle_min);
-    laser->SetMaximumAngle(scan->angle_max);
-    laser->SetAngularResolution(scan->angle_increment);
-
-    // Store this laser device for later
-    lasers_[scan->header.frame_id] = laser;
-  }
-
-  return lasers_[scan->header.frame_id];
-}
 
 void LaserScanMatcher::createTfFromXYTheta(double x, double y, double theta, tf2::Transform& t)
 {
