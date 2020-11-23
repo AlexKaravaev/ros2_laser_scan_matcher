@@ -5,6 +5,7 @@ project(ros2_laser_scan_matcher)
 find_package(ament_cmake REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -38,6 +39,7 @@ ament_target_dependencies(laser_scan_matcher
   tf2_geometry_msgs
   csm
   Boost
+  nav_msgs
 )
 
 install(TARGETS laser_scan_matcher DESTINATION lib/${PROJECT_NAME})

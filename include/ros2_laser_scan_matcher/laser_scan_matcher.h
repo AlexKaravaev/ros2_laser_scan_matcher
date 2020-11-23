@@ -39,6 +39,8 @@
 #define LASER_SCAN_MATCHER_LASER_SCAN_MATCHER_H
 
 #include <sensor_msgs/msg/laser_scan.hpp>
+#include <geometry_msgs/msg/pose.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/message_filter.h>
@@ -71,19 +73,27 @@ private:
   tf2::Transform base_to_laser_;  // static, cached
   tf2::Transform laser_to_base_; 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_publisher_;
   // Coordinate parameters
   std::string map_frame_;
   std::string base_frame_;
   std::string odom_frame_;
+  std::string odom_topic_;
 
   // Keyframe parameters
   double kf_dist_linear_;
   double kf_dist_linear_sq_;
   double kf_dist_angular_;
 
+  // For calculating odometry
+  double prev_x;
+  double prev_y;
+  double prev_angle;
+
   bool initialized_;
-  
+  bool publish_odom_;
+
+
   tf2::Transform f2b_;     // fixed-to-base tf (pose of base frame in fixed frame)
   tf2::Transform f2b_kf_;  // pose of the last keyframe scan in fixed frame
 
