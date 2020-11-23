@@ -433,7 +433,6 @@ bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
     ld_free(prev_ldp_scan_);
     prev_ldp_scan_ = curr_ldp_scan;
     f2b_kf_ = f2b_;
-    RCLCPP_INFO(get_logger(), "new keyframe");
 
   }
   else
