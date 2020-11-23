@@ -3,7 +3,7 @@ Ported to ros2 version of laser-scan-matcher by [scan_tools](https://github.com/
 
 
 ## Installation
-* Install modified version of [csmlib](https://github.com/AlexKaravaev/csm])
+* Install modified version of [csmlib](https://github.com/AlexKaravaev/csm)
 
 ## Topics
 
