@@ -355,7 +355,7 @@ bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
 
   tf2::Transform pr_ch_l;
 
-  double dt = (now() - last_icp_time_).nanoseconds()/1e-9;
+  double dt = (now() - last_icp_time_).nanoseconds()/1e+9;
   double pr_ch_x, pr_ch_y, pr_ch_a;
   
 
@@ -425,8 +425,8 @@ bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
     nav_msgs::msg::Odometry odom_msg;
 
     odom_msg.header.stamp    = time;
-    odom_msg.header.frame_id = base_frame_;
-
+    odom_msg.header.frame_id = odom_frame_;
+    odom_msg.child_frame_id = base_frame_;
     odom_msg.pose.pose.position.x = f2b_.getOrigin().x();
     odom_msg.pose.pose.position.y = f2b_.getOrigin().y();
     odom_msg.pose.pose.position.z = f2b_.getOrigin().z();
@@ -436,10 +436,10 @@ bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
     odom_msg.pose.pose.orientation.z = f2b_.getRotation().z();
     odom_msg.pose.pose.orientation.w = f2b_.getRotation().w();
 
-    odom_msg.twist.twist.linear.y = (prev_y - f2b_.getOrigin().getY())/dt;
-    odom_msg.twist.twist.linear.x = (prev_x - f2b_.getOrigin().getX())/dt;
+    odom_msg.twist.twist.linear.y = (f2b_.getOrigin().getY() - prev_y)/dt;
+    odom_msg.twist.twist.linear.x = (f2b_.getOrigin().getX() - prev_x)/dt;
 
-    odom_msg.twist.twist.angular.x = (prev_angle - tf2::getYaw(f2b_.getRotation()))/dt;
+    odom_msg.twist.twist.angular.x = (tf2::getYaw(f2b_.getRotation()) - prev_angle)/dt;
 
     prev_x = f2b_.getOrigin().getX();
     prev_y = f2b_.getOrigin().getY();
@@ -458,7 +458,7 @@ bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
   tf_msg.transform.rotation.w = f2b_.getRotation().w();
  
   tf_msg.header.stamp = time;
-  tf_msg.header.frame_id = map_frame_;
+  tf_msg.header.frame_id = odom_frame_;
   tf_msg.child_frame_id = base_frame_;
   //tf2::Stamped<tf2::Transform> transform_msg (f2b_, time, map_frame_, base_frame_);
   tfB_->sendTransform (tf_msg);
