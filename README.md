@@ -12,7 +12,7 @@ Ported to ros2 version of laser-scan-matcher by [scan_tools](https://github.com/
 - `/tf` ([tf2_msgs/TFMessage](http://docs.ros.org/melodic/api/tf2_msgs/html/msg/TFMessage.html))
 ### Published topics
 - `/tf` ([tf2_msgs/TFMessage](http://docs.ros.org/melodic/api/tf2_msgs/html/msg/TFMessage.html)) with transform odom->base_link
-
+- `/odom` ([nav_msgs/Odometry](https://github.com/ros2/common_interfaces/blob/master/nav_msgs/msg/Odometry.msg)) Optional. Parameter publish_odom must be set to the name of the topic. If topic is empty, odom will not be published.
 
 ## Will be released features:
 - [x] Support of pure laserscan
