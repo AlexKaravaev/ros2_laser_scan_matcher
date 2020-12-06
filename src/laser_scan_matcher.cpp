@@ -67,6 +67,9 @@ LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(
    RCLCPP_INFO(get_logger(), "Creating laser_scan_matcher");
   add_parameter("publish_odom", rclcpp::ParameterValue(std::string("")),
     "If publish odometry from laser_scan. Empty if not, otherwise name of the topic");
+  add_parameter("publish_tf",   rclcpp::ParameterValue(false),
+    " If publish tf odom->base_link");
+  
   add_parameter("base_frame", rclcpp::ParameterValue(std::string("base_link")),
     "Which frame to use for the robot base");
   add_parameter("odom_frame", rclcpp::ParameterValue(std::string("odom")),
@@ -184,8 +187,9 @@ LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(
   odom_frame_ = this->get_parameter("odom_frame").as_string();
   kf_dist_linear_  = this->get_parameter("kf_dist_linear").as_double();
   kf_dist_angular_ = this->get_parameter("kf_dist_angular").as_double();
-  odom_topic_ = this->get_parameter("publish_odom").as_string();
-  
+  odom_topic_   = this->get_parameter("publish_odom").as_string();
+  publish_tf_   = this->get_parameter("publish_tf").as_bool(); 
+
   publish_odom_ = (odom_topic_ != "");
   kf_dist_linear_sq_ = kf_dist_linear_ * kf_dist_linear_;
 
@@ -237,7 +241,8 @@ LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(
   // Subscribers
   this->scan_filter_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>("scan", 5, std::bind(&LaserScanMatcher::scanCallback, this, std::placeholders::_1));
   tf_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
-  tfB_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
+  if (publish_tf_)
+    tfB_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
   if(publish_odom_){
     odom_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>(odom_topic_, 10);
   }
@@ -447,21 +452,24 @@ bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
 
     odom_publisher_->publish(odom_msg);
   }
+  if (publish_tf_ != 0)
+  {
+    geometry_msgs::msg::TransformStamped tf_msg;
+    tf_msg.transform.translation.x = f2b_.getOrigin().x();
+    tf_msg.transform.translation.y = f2b_.getOrigin().y();
+    tf_msg.transform.translation.z = f2b_.getOrigin().z();
+    tf_msg.transform.rotation.x = f2b_.getRotation().x();
+    tf_msg.transform.rotation.y = f2b_.getRotation().y();
+    tf_msg.transform.rotation.z = f2b_.getRotation().z();
+    tf_msg.transform.rotation.w = f2b_.getRotation().w();
+  
+    tf_msg.header.stamp = time;
+    tf_msg.header.frame_id = odom_frame_;
+    tf_msg.child_frame_id = base_frame_;
+    //tf2::Stamped<tf2::Transform> transform_msg (f2b_, time, map_frame_, base_frame_);
+    tfB_->sendTransform (tf_msg);
+  }
 
-  geometry_msgs::msg::TransformStamped tf_msg;
-  tf_msg.transform.translation.x = f2b_.getOrigin().x();
-  tf_msg.transform.translation.y = f2b_.getOrigin().y();
-  tf_msg.transform.translation.z = f2b_.getOrigin().z();
-  tf_msg.transform.rotation.x = f2b_.getRotation().x();
-  tf_msg.transform.rotation.y = f2b_.getRotation().y();
-  tf_msg.transform.rotation.z = f2b_.getRotation().z();
-  tf_msg.transform.rotation.w = f2b_.getRotation().w();
- 
-  tf_msg.header.stamp = time;
-  tf_msg.header.frame_id = odom_frame_;
-  tf_msg.child_frame_id = base_frame_;
-  //tf2::Stamped<tf2::Transform> transform_msg (f2b_, time, map_frame_, base_frame_);
-  tfB_->sendTransform (tf_msg);
   // **** swap old and new
   if (newKeyframeNeeded(corr_ch))
   {
