@@ -247,7 +247,7 @@ LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(
   if (publish_tf_)
     tfB_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
   if(publish_odom_){
-    odom_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>(odom_topic_, 10);
+    odom_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>(odom_topic_, rclcpp::SensorDataQoS());
   }
 }
 
@@ -428,6 +428,7 @@ bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
     return false;
   }
 
+
   if (publish_odom_)
   {
     // stamped Pose message
@@ -456,7 +457,9 @@ bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
 
     odom_publisher_->publish(odom_msg);
   }
-  if (publish_tf_ != 0)
+
+  
+  if (publish_tf_)
   {
     geometry_msgs::msg::TransformStamped tf_msg;
     tf_msg.transform.translation.x = f2b_.getOrigin().x();
@@ -489,7 +492,7 @@ bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
 
   }
   last_icp_time_ = now();
-  
+  return true;
 }
 
 bool LaserScanMatcher::newKeyframeNeeded(const tf2::Transform& d)
