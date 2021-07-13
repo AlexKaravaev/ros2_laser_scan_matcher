@@ -76,6 +76,8 @@ LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(
     "Which frame to use for the odom");
   add_parameter("map_frame", rclcpp::ParameterValue(std::string("map")),
     "Which frame to use for the map");
+  add_parameter("laser_frame", rclcpp::ParameterValue(std::string("laser")),
+    "Which frame to use for the laser");
   add_parameter("kf_dist_linear", rclcpp::ParameterValue(0.10),
     "When to generate keyframe scan.");
   add_parameter("kf_dist_angular", rclcpp::ParameterValue(10.0* (M_PI/180.0)),
@@ -185,6 +187,7 @@ LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(
   map_frame_  = this->get_parameter("map_frame").as_string();
   base_frame_ = this->get_parameter("base_frame").as_string();
   odom_frame_ = this->get_parameter("odom_frame").as_string();
+  laser_frame_ = this->get_parameter("laser_frame").as_string();
   kf_dist_linear_  = this->get_parameter("kf_dist_linear").as_double();
   kf_dist_angular_ = this->get_parameter("kf_dist_angular").as_double();
   odom_topic_   = this->get_parameter("publish_odom").as_string();
@@ -281,7 +284,7 @@ void LaserScanMatcher::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr
     createCache(scan_msg);    // caches the sin and cos of all angles
 
     // cache the static tf from base to laser
-    if (!getBaseToLaserTf("laser"))
+    if (!getBaseToLaserTf(laser_frame_))
     {
       RCLCPP_WARN(get_logger(),"Skipping scan");
       return;
