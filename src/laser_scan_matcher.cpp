@@ -59,7 +59,7 @@ void LaserScanMatcher::add_parameter(
   }
 
 
-LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(false), prev_angle(0.0), prev_x(0.0), prev_y(0.0)
+LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(false)
 {
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
   // Initiate parameters
@@ -230,6 +230,7 @@ LaserScanMatcher::LaserScanMatcher() : Node("laser_scan_matcher"), initialized_(
   // State variables
 
   f2b_.setIdentity();
+  prev_f2b_.setIdentity();
   f2b_kf_.setIdentity();
   input_.laser[0] = 0.0;
   input_.laser[1] = 0.0;
@@ -446,14 +447,13 @@ bool LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
     odom_msg.pose.pose.orientation.z = f2b_.getRotation().z();
     odom_msg.pose.pose.orientation.w = f2b_.getRotation().w();
 
-    odom_msg.twist.twist.linear.y = (f2b_.getOrigin().getY() - prev_y)/dt;
-    odom_msg.twist.twist.linear.x = (f2b_.getOrigin().getX() - prev_x)/dt;
+    // Get pose difference in base frame and calculate velocities
+    auto pose_difference = prev_f2b_.inverse() * f2b_;
+    odom_msg.twist.twist.linear.x = pose_difference.getOrigin().getX()/dt;
+    odom_msg.twist.twist.linear.y = pose_difference.getOrigin().getY()/dt;
+    odom_msg.twist.twist.angular.z = tf2::getYaw(pose_difference.getRotation())/dt;
 
-    odom_msg.twist.twist.angular.x = (tf2::getYaw(f2b_.getRotation()) - prev_angle)/dt;
-
-    prev_x = f2b_.getOrigin().getX();
-    prev_y = f2b_.getOrigin().getY();
-    prev_angle = tf2::getYaw(f2b_.getRotation());
+    prev_f2b_ = f2b_;
 
     odom_publisher_->publish(odom_msg);
   }
