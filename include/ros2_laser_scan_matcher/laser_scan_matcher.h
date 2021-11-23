@@ -86,16 +86,12 @@ private:
   double kf_dist_linear_sq_;
   double kf_dist_angular_;
 
-  // For calculating odometry
-  double prev_x;
-  double prev_y;
-  double prev_angle;
-
   bool initialized_;
   bool publish_odom_;
   bool publish_tf_;
 
   tf2::Transform f2b_;     // fixed-to-base tf (pose of base frame in fixed frame)
+  tf2::Transform prev_f2b_; // previous fixed-to-base tf (for odometry calculation)
   tf2::Transform f2b_kf_;  // pose of the last keyframe scan in fixed frame
 
 
