@@ -309,7 +309,7 @@ bool LaserScanMatcher::getBaseToLaserTf (const std::string& frame_id)
   geometry_msgs::msg::TransformStamped laser_pose_msg;
   try
   {
-      laser_pose_msg = tf_buffer_->lookupTransform(base_frame_, frame_id, t,rclcpp::Duration(10));
+      laser_pose_msg = tf_buffer_->lookupTransform(base_frame_, frame_id, t,rclcpp::Duration(10,0));
       base_to_laser_tf.setOrigin(tf2::Vector3(laser_pose_msg.transform.translation.x,\
                                               laser_pose_msg.transform.translation.y,\
                                               laser_pose_msg.transform.translation.z));
