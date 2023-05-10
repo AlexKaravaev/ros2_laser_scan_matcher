@@ -44,7 +44,7 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/message_filter.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include <tf2/utils.h>
 
 #include "rclcpp/rclcpp.hpp"
@@ -80,6 +80,7 @@ private:
   std::string odom_frame_;
   std::string laser_frame_;
   std::string odom_topic_;
+  std::string laser_scan_topic_;
 
   // Keyframe parameters
   double kf_dist_linear_;
