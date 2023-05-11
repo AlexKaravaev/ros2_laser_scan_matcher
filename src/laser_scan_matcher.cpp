@@ -181,6 +181,11 @@ namespace scan_tools
     add_parameter("use_sigma_weights", rclcpp::ParameterValue(0),
                   " If 1, the field 'readings_sigma' in the second scan is used to weight the correspondence by 1/sigma^2");
 
+    add_parameter("laser_odom_srv_channel", std::string{"~/enable_laser_odom"},"enable node service channel");
+    
+    
+    
+    auto enable_laser_odom_service_channel = this->get_parameter("laser_odom_srv_channel");
     map_frame_ = this->get_parameter("map_frame").as_string();
     base_frame_ = this->get_parameter("base_frame").as_string();
     odom_frame_ = this->get_parameter("odom_frame").as_string();
@@ -248,8 +253,8 @@ namespace scan_tools
 
     // Create services
     enable_node_srv_ = this->create_service<std_srvs::srv::SetBool>(
-        shutdown_service_channel, bind(&LaserScanMatcher::subscribeToTopicsCb, this,
-                                       placeholders::_1, placeholders::_2));
+        enable_laser_odom_service_channel, bind(&LaserScanMatcher::subscribeToTopicsCb, this,
+                                       std::placeholders::_1, std::placeholders::_2));
   }
 
   LaserScanMatcher::~LaserScanMatcher()
