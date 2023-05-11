@@ -64,14 +64,14 @@ namespace scan_tools
     // Initiate parameters
 
     RCLCPP_INFO(get_logger(), "Creating laser_scan_matcher");
-    add_parameter("publish_odom", rclcpp::ParameterValue(std::string("")),
+    add_parameter("publish_odom", rclcpp::ParameterValue(std::string("/robot_interface/odom_laser")),
                   "If publish odometry from laser_scan. Empty if not, otherwise name of the topic");
     add_parameter("publish_tf", rclcpp::ParameterValue(false),
                   " If publish tf odom->base_link");
 
     add_parameter("base_frame", rclcpp::ParameterValue(std::string("base_link")),
                   "Which frame to use for the robot base");
-    add_parameter("odom_frame", rclcpp::ParameterValue(std::string("/robot_interface/odom_laser")),
+    add_parameter("odom_frame", rclcpp::ParameterValue(std::string("odom")),
                   "Which frame to use for the odom");
     add_parameter("map_frame", rclcpp::ParameterValue(std::string("map")),
                   "Which frame to use for the map");
