@@ -1,0 +1,8 @@
+# Editors
+**/.idea/
+.vscode/
+**/cmake-build-debug/*
+compile_commands.json
+.cache/
+.fleet/
+
