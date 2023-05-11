@@ -71,7 +71,7 @@ namespace scan_tools
 
     add_parameter("base_frame", rclcpp::ParameterValue(std::string("base_link")),
                   "Which frame to use for the robot base");
-    add_parameter("odom_frame", rclcpp::ParameterValue(std::string("odom")),
+    add_parameter("odom_frame", rclcpp::ParameterValue(std::string("/robot_interface/odom_laser")),
                   "Which frame to use for the odom");
     add_parameter("map_frame", rclcpp::ParameterValue(std::string("map")),
                   "Which frame to use for the map");
