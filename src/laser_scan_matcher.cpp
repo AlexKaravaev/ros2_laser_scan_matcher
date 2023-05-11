@@ -181,7 +181,7 @@ namespace scan_tools
     add_parameter("use_sigma_weights", rclcpp::ParameterValue(0),
                   " If 1, the field 'readings_sigma' in the second scan is used to weight the correspondence by 1/sigma^2");
 
-    add_parameter("laser_odom_srv_channel", std::string{"~/enable_laser_odom"},"enable node service channel");
+    add_parameter("laser_odom_srv_channel", rclcpp::ParameterValue(std::string{"~/enable_laser_odom"}),"enable node service channel");
     
     
     
