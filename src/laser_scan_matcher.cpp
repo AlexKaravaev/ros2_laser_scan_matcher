@@ -185,7 +185,7 @@ namespace scan_tools
     
     
     
-    auto enable_laser_odom_service_channel = this->get_parameter("laser_odom_srv_channel");
+    auto enable_laser_odom_service_channel = this->get_parameter("laser_odom_srv_channel").as_string();
     map_frame_ = this->get_parameter("map_frame").as_string();
     base_frame_ = this->get_parameter("base_frame").as_string();
     odom_frame_ = this->get_parameter("odom_frame").as_string();
