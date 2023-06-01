@@ -9,7 +9,6 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <build_depend>nav2_common</build_depend>
   <build_depend>sensor_msgs</build_depend>
   <build_depend>csm</build_depend>
   <exec_depend>csm</exec_depend>
@@ -21,8 +20,6 @@
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>tf2</exec_depend>
-  <exec_depend>nav2_util</exec_depend>
-  <exec_depend>nav2_msgs</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>launch_testing</exec_depend>
   <exec_depend>common_interfaces</exec_depend>
