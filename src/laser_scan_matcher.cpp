@@ -281,10 +281,13 @@ namespace scan_tools
 
   void LaserScanMatcher::createCache(const sensor_msgs::msg::LaserScan::SharedPtr &scan_msg)
   {
+    const auto num_scan_pts = scan_msg->ranges.size();
     a_cos_.clear();
     a_sin_.clear();
+    a_cos_.reserve(num_scan_pts);
+    a_sin_.reserve(num_scan_pts);
 
-    for (unsigned int i = 0; i < scan_msg->ranges.size(); ++i)
+    for (unsigned int i = 0; i < num_scan_pts; ++i)
     {
       double angle = scan_msg->angle_min + i * scan_msg->angle_increment;
       a_cos_.push_back(cos(angle));
