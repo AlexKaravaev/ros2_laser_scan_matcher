@@ -272,6 +272,9 @@ namespace scan_tools
     else
     {
       this->scan_filter_sub_.reset();
+      // reset the previous scan data
+      delete prev_ldp_scan_;
+      prev_ldp_scan_ = nullptr;
     }
     response->success = true;
   }
@@ -307,9 +310,15 @@ namespace scan_tools
         return;
       }
 
+      initialized_ = true;
+    }
+
+    // Initialize the prev scan data if its not valid
+    if (!prev_ldp_scan_)
+    {
       laserScanToLDP(scan_msg, prev_ldp_scan_);
       last_icp_time_ = scan_msg->header.stamp;
-      initialized_ = true;
+      return;
     }
 
     LDP curr_ldp_scan;
